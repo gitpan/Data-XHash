@@ -2,7 +2,7 @@
 
 ### This file tests primarily hash-related functionality
 
-use Test::More tests => 50;
+use Test::More tests => 52;
 use Data::XHash qw/xhash xh/;
 
 sub myxh {
@@ -143,6 +143,22 @@ is($xh->NEXTKEY(2), 3, 'NEXTKEY #2 returns third & last key');
 is($xh->NEXTKEY(3), undef, 'NEXTKEY after end returns undef');
 
 # Tests: 6
+
+## Test foreach
+
+is_deeply(xhash(1..5)->foreach(sub {
+    my ($xh, $key, $value, $calc) = @_;
+    return $calc unless defined($key);
+    $calc->{sum} += $value; $calc->{product} *= $value;
+    return ();
+  }, { sum => 0, product => 1 }), { sum => 15, product => 120 },
+  'foreach sum/product is OK');
+is_deeply([xhash({hello => 'world'})->foreach(sub {
+    my ($xh, $key, $value) = @_;
+    return defined($key)? "$key, $value": ();
+  })], ['hello, world'], 'foreach hello, world is OK');
+
+# Tests: 2
 
 package Data::XHashSubclass;
 

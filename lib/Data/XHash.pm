@@ -18,11 +18,11 @@ or map) with key-path traversal and automatic index keys
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 =head1 SYNOPSIS
 
@@ -103,6 +103,10 @@ our $VERSION = '0.01';
 
     ($key, $value) = each(%$tiedhref); # Key/value iteration
 
+    # Call coderef with ($xhash, $key, $value, @more_args) for
+    # each key/value pair and then undef/undef.
+    @results = $xhash->foreach(\&coderef, @more_args);
+
     # Does the hash contain any key/value pairs?
     $boolean = scalar(%$tiedhref);
     $boolean = $xhash->scalar();
@@ -152,12 +156,12 @@ and conversion to and from native Perl data structures.
 
 Suggested uses include structured configuration information or HTTP query
 parameters in which order may at least sometimes be significant, for
-passing mixed positional and named parameters, or for porting PHP code.
+passing mixed positional and named parameters, sparse arrays, or porting
+PHP code.
 
 =head1 EXPORTS
 
 You may export any of the shortcut functions. None are exported by default.
-
 
 =head1 FUNCTIONS
 
@@ -630,6 +634,44 @@ sub values : method {
     $self = tied(%$self) || $self;
     return map($self->fetch($_), (ref($keys) eq 'ARRAY'?
       @$keys: $self->keys()));
+}
+
+=head2 $xhash->foreach(\&coderef, @more_args)
+
+This method calls the coderef as follows
+
+    push(@results, &$coderef($xhash, $key, $value, @more_args));
+
+once for each key/value pair in the XHash (if any), followed by a
+call with both set to C<undef>. It returns the accumulated list of
+coderef's return values.
+
+Example:
+
+    # The sum and product across an XHash of numeric values
+    %results = $xhash->foreach(sub {
+        my ($xhash, $key, $value, $calc) = @_;
+
+        return %$calc unless defined($key);
+        $calc->{sum} += $value;
+        $calc->{product} *= $value;
+        return ();
+      }, { sum => 0, product => 1 });
+
+=cut
+
+sub foreach : method {
+    my $self = shift;
+    my $code = shift;
+    my $key = $self->FIRSTKEY();
+    my @results;
+
+    while (defined($key)) {
+	push(@results, &$code($self, $key, $self->fetch($key), @_));
+	$key = $self->NEXTKEY($key);
+    }
+    push(@results, &$code($self, undef, undef, @_));
+    return @results;
 }
 
 sub UNTIE {}
@@ -1145,6 +1187,15 @@ Like L<Array::Assign>, but with native Perl syntax.
 
 An ordered map implementation, currently implementing an array of single-key
 hashes stored in key-sorting order.
+
+=item L<Hash::AsObject>
+
+Auto accessors and mutators for hashes and tied hashes.
+
+=item L<Hash::Path>
+
+A basic hash-of-hash traverser. Discovered by the author after writing
+Data::XHash.
 
 =item L<Tie::IxHash>
 

@@ -10,7 +10,7 @@ Data::XHash::Splice - Add splice to your XHash
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =head1 SYNOPSIS
 
@@ -19,7 +19,7 @@ Version 0.01
 
 =head1 DESCRIPTION
 
-This module adds methods C<splice()> and C<spliceref> to
+This module adds methods C<splice()> and C<spliceref()> to
 L<Data::XHash>.
 
 These are the only methods that deal explicitly with offsets rather than
