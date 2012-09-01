@@ -18,11 +18,11 @@ or map) with key-path traversal and automatic index keys
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 =head1 SYNOPSIS
 
@@ -126,6 +126,9 @@ our $VERSION = '0.02';
     $xhash->unshift(@elements);
     $xhash->unshiftref(\@elements, %options);
 
+    # Merge in other XHashes (recursively)
+    $xhash->merge(\%options?, @xhashes);
+
     # Export in array-like fashion
     @list = $xhash->as_array(%options);
     $list = $xhash->as_arrayref(%options);
@@ -206,8 +209,8 @@ sub xhrn { return __PACKAGE__->new()->pushref(shift, nested => 1, @_); }
 
 =head2 $xhash->new( )
 
-This creates a new Data::XHash object and ties it to a new, empty hash. It
-blesses the hash as well and returns a reference to the hash (C<$tiedref>).
+These create a new Data::XHash object and tie it to a new, empty hash. They
+bless the hash as well and return a reference to the hash (C<$tiedref>).
 
 Do not use C<< tie %some_hash, 'Data::XHash'; >> - it will croak!
 
@@ -240,7 +243,7 @@ sub TIEHASH {
 
 =head2 $xhash->fetch(\@path)
 
-Returns the value for the specified hash key, or C<undef> if the key does
+These return the value for the specified hash key, or C<undef> if the key does
 not exist.
 
 If the key parameter is reference to a non-empty array, its elements are
@@ -281,8 +284,8 @@ sub FETCH {
 
 =head2 $xhash->store(\@path, $value, %options)
 
-Stores the value for the specified key in the XHash. Any existing value for
-the key is overwritten. New keys are stored at the end of the XHash.
+These store the value for the specified key in the XHash. Any existing value
+for the key is overwritten. New keys are stored at the end of the XHash.
 
 If the key parameter is a reference to a non-empty array, its elements are
 traversed as a path through nested XHashes. Path elements will be
@@ -292,7 +295,7 @@ If the key is an empty path or the C<undef> value, or any path key is the
 C<undef> value, the next available non-negative integer index in the
 corresponding XHash is used instead.
 
-Returns the XHash tiedref or object (whichever was used).
+These return the XHash tiedref or object (whichever was used).
 
 Options:
 
@@ -356,13 +359,15 @@ sub STORE {
     return $this;
 }
 
+*store = \&STORE;
+
 =head2 %$tiedref = ()
 
 =head2 $xhash->clear( )
 
-Clears the XHash.
+These clear the XHash.
 
-Returns the XHash tiedref or object (whichever was used).
+Clear returns the XHash tiedref or object (whichever was used).
 
 =cut
 
@@ -385,8 +390,8 @@ sub CLEAR {
 
 =head2 $xhash->delete(\%options?, @keys)
 
-Removes the element with the specified key and returns its value. It quietly
-returns C<undef> if the key does not exist.
+These remove the element with the specified key and return its value. They
+quietly return C<undef> if the key does not exist.
 
 The method call can also delete (and return) multiple local (not path) keys
 at once.
@@ -465,7 +470,7 @@ sub DELETE : method {
 
 =head2 $xhash->exists($key) # or \@path
 
-Returns true if the key (or path) exists.
+These return true if the key (or path) exists.
 
 =cut
 
@@ -488,7 +493,7 @@ sub EXISTS {
 
 =head2 $xhash->first_key( )
 
-Returns the first key (or C<undef> if the XHash is empty).
+This returns the first key (or C<undef> if the XHash is empty).
 
 =cut
 
@@ -507,7 +512,7 @@ sub FIRSTKEY {
 
 =head2 $xhash->next_key($key)
 
-Returns the key after C<$key>, or C<undef> if C<$key> is the last key or
+This returns the key after C<$key>, or C<undef> if C<$key> is the last key or
 doesn't exist.
 
 Path keys are not supported.
@@ -526,7 +531,7 @@ sub NEXTKEY {
 
 =head2 $xhash->last_key( )
 
-Returns the last key, or C<undef> if the XHash is empty.
+This returns the last key, or C<undef> if the XHash is empty.
 
 =cut
 
@@ -539,7 +544,7 @@ sub last_key {
 
 =head2 $xhash->next_index( )
 
-Returns the next numeric insertion index. This is either "0" or one more
+This returns the next numeric insertion index. This is either "0" or one more
 than the current largest non-negative integer index.
 
 =cut
@@ -563,7 +568,7 @@ sub next_index {
 
 =head2 $xhash->scalar( )
 
-Returns true if the XHash is not empty.
+This returns true if the XHash is not empty.
 
 =cut
 
@@ -643,8 +648,9 @@ This method calls the coderef as follows
     push(@results, &$coderef($xhash, $key, $value, @more_args));
 
 once for each key/value pair in the XHash (if any), followed by a
-call with both set to C<undef>. It returns the accumulated list of
-coderef's return values.
+call with both set to C<undef>.
+
+It returns the accumulated list of coderef's return values.
 
 Example:
 
@@ -681,8 +687,8 @@ sub DESTROY {}
 
 =head2 $xhash->shift( )
 
-Removes the first element (shift) or last element (pop) from the XHash and
-returns its value (in scalar context) or its key and value (in list
+These remove the first element (shift) or last element (pop) from the XHash
+and return its value (in scalar context) or its key and value (in list
 context). If the XHash was already empty, C<undef> or C<()> is returned
 instead.
 
@@ -716,8 +722,8 @@ sub shift : method {
 
 =head2 $xhash->unshiftref(\@elements, %options)
 
-Appends elements at the end of the XHash (C<push()> and C<pushref()>) or
-inserts elements at the beginning of the XHash (C<unshift()> and
+These append elements at the end of the XHash (C<push()> and C<pushref()>)
+or insert elements at the beginning of the XHash (C<unshift()> and
 C<unshiftref()>).
 
 Scalar elements are automatically assigned a numeric index using
@@ -726,7 +732,7 @@ to references are dereferenced by one level before being added. (To add
 a hashref as a hashref rather than key/value pairs, push or unshift a
 reference to the hashref instead.)
 
-Returns the XHash tiedref or object (whichever was used).
+These return the XHash tiedref or object (whichever was used).
 
 Options:
 
@@ -807,6 +813,79 @@ sub unshiftref {
     $self->{last_key} = $save_last if defined($save_last);
 
     return $this;
+}
+
+=head2 $xhash->merge(\%options?, @xhashes)
+
+This recursively merges each of the XHash trees in C<@xhashes> into the
+current XHash tree C<$xhash> as follows:
+
+If a key has both existing and new values and both are XHashes, the elements
+in the new XHash are added to the existing XHash.
+
+Otherwise, if the new value is an XHash, the value is set to a B<copy> of
+the new XHash.
+
+Otherwise the value is set to the new value.
+
+Returns the XHash tiedref or object (whichever was used).
+
+Examples:
+
+    # Clone a tree of nested XHashes (preserving index keys)
+    $clone = xh()->merge({ indexed_as => 'hash' }, $xhash);
+
+    # Merge $xhash2 (with new keys) into existing XHash $xhash1
+    $xhash1->merge($xhash2);
+
+Options:
+
+=over
+
+=item indexed_as => $type
+
+If C<$type> is C<array> (the default), numerically-indexed items in
+each merged XHash are renumbered as they are added (like
+C<< push($xhash->as_array()) >>).
+
+If C<$type> is C<hash>, numerically-indexed items are merged without
+renumbering (like C<< push($xhash->as_hash()) >>).
+
+=back
+
+=cut
+
+sub merge {
+    my $self = shift;
+    my %options = (ref($_[0]) eq 'HASH')? %{shift()}: ();
+
+    $options{'indexed_as'} ||= 'array';
+    foreach (@_) {
+	$_->foreach(sub {
+	    my ($xhash, $key, $new_val) = @_;
+	    my $cur_val;
+
+	    return () unless defined($key);
+	    if ($options{'indexed_as'} ne 'hash' && $key =~ /^-?\d+$/) {
+		# Renumber index keys in array mode
+		$key = $self->next_index();
+		$cur_val = undef;
+	    } else {
+		$cur_val = $self->fetch($key);
+	    }
+	    if (blessed($new_val) && $new_val->isa(__PACKAGE__)) {
+		$self->store($key, $cur_val = $new_val->new())
+		  unless blessed($cur_val) && $cur_val->isa(__PACKAGE__);
+		$cur_val->merge(\%options, $new_val);
+	    } else {
+		$self->store($key, $new_val);
+	    }
+
+	    return ();
+	});
+    }
+
+    return $self;
 }
 
 =head2 $xhash->as_array(%options)
@@ -907,8 +986,8 @@ sub as_hashref {
 
 =head2 $xhash->reorder($refkey, @keys)
 
-Reorders elements within the XHash relative to the reference element having
-key C<$refkey>, which must exist and will not be moved.
+This reorders elements within the XHash relative to the reference element
+having key C<$refkey>, which must exist and will not be moved.
 
 If the reference key appears in C<@keys>, the elements with keys preceding
 it will be moved immediately before the reference element. All other
@@ -919,7 +998,7 @@ considered - duplicates are ignored.
 
 If any key is an arrayref, it is replaced with a sorted list of index keys.
 
-Returns the XHash tiedref or object (whichever was used).
+This method returns the XHash tiedref or object (whichever was used).
 
     # Move some keys to the beginning of the XHash.
     $xhash->reorder($xhash->first_key(), @some_keys,
@@ -967,11 +1046,13 @@ sub reorder {
 
 =head2 $xhash->remap(%mapping)
 
-Remaps element keys according to the specified mapping (a hash of
+This remaps element keys according to the specified mapping (a hash of
 C<< $old_key => $new_key >>). The mapping must map old keys to new keys
 one-to-one.
 
 The order of elements in the XHash is unchanged.
+
+The XHash tiedref or object is returned (whichever was used).
 
 =cut
 
@@ -1001,11 +1082,11 @@ sub remap {
 
 =head2 $xhash->renumber(%options)
 
-Renumbers all elements with an integer index (those returned by
+This renumbers all elements with an integer index (those returned by
 C<< $xhash->keys(index_only => 1) >>). The order of elements is
 unchanged.
 
-Returns the XHash tiedref or object (whichever was used).
+It returns the XHash tiedref or object (whichever was used).
 
 Options:
 
@@ -1046,18 +1127,18 @@ sub renumber {
 
 =head2 $xhash->traverse($path, options?)
 
-This method traverses nested XHash trees. The path may be a simple scalar
-key, or it may be an array reference containing multiple keys along the
-path.
+This method traverses key paths across nested XHash trees. The path may be
+a simple scalar key, or it may be an array reference containing multiple
+keys along the path.
 
 An C<undef> value along the path will translate to the next available
 integer index at that level in the path. A C<{}> at the end of the path
 forces auto-vivification of an XHash at the end of the path if one does not
 already exist there.
 
-This method returns a reference to a hash containing the elements
+This method returns a reference to an hash containing the elements
 "container", "key", and "value". If the path does not exist, the container
-value with be C<undef>.
+and key values with be C<undef>.
 
 An empty path (C<[]>) is equivalent to a path of C<undef>.
 
@@ -1067,16 +1148,17 @@ Options:
 
 =item op
 
-Specifies the operation for which the traversal is being performed
-(fetch, store, exists, or delete).
+This option specifies the operation for which the traversal is being
+performed (fetch, store, exists, or delete).
 
 =item xhash
 
-Force the path to terminate with an XHash (for "fetch" paths ending in C<{}>).
+This forces the path to terminate with an XHash (for "fetch" paths ending in
+C<{}>).
 
 =item vivify
 
-Auto-vivify missing intermediate path elements.
+This will auto-vivify missing intermediate path elements.
 
 =back
 

@@ -10,7 +10,7 @@ Data::XHash::Splice - Add splice to your XHash
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 =head1 SYNOPSIS
 

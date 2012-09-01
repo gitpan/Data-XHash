@@ -2,10 +2,20 @@
 
 ### This file tests primarily array-related functionality
 
-use Test::More tests => 34;
+use Test::More tests => 35;
 use Data::XHash qw/xh xhr/;
 
 my $xh;
+
+## Array-related methods check
+
+can_ok('Data::XHash', qw/
+  pop shift push pushref unshift unshiftref
+  as_array as_arrayref as_hash as_hashref
+  reorder remap renumber
+  /);
+
+# Tests: 1
 
 ## Test keys, index keys, and values
 

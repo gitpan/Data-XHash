@@ -2,7 +2,7 @@
 
 ### This file tests primarily hash-related functionality
 
-use Test::More tests => 52;
+use Test::More tests => 58;
 use Data::XHash qw/xhash xh/;
 
 sub myxh {
@@ -10,6 +10,19 @@ sub myxh {
 }
 
 my $xh;
+
+## Hash-related methods check
+
+can_ok('Data::XHash', qw/
+  new xh xhash xhashref xhn xhr xhrn TIEHASH UNTIE DESTROY
+  fetch FETCH store STORE clear CLEAR delete DELETE exists EXISTS
+  /);
+can_ok('Data::XHash', qw/
+  first_key FIRSTKEY next_key NEXTKEY last_key next_index keys values
+  foreach scalar SCALAR
+  /);
+
+# Tests: 2
 
 ## Ways to create an XHash
 
@@ -48,6 +61,9 @@ is($xh->next_index(), 2, 'next index is 2 after setting {[]} (1)');
 $xh->STORE(5, 'third');
 is_deeply($xh->as_hashref(), [{0=>'first'},{1=>'second'},{5=>'third'}],
   'explicit num key STORE');
+$xh->store(5, 'third');
+is_deeply($xh->as_hashref(), [{0=>'first'},{1=>'second'},{5=>'third'}],
+  'explicit num key store');
 is($xh->next_index(), 6, 'next index is 6 after STORE 5');
 
 $xh->STORE([], 'fourth');
@@ -56,15 +72,16 @@ is_deeply($xh->as_hashref(),
   'automatic num key STORE');
 is($xh->next_index(), 7, 'next index is 7 after STORE [] (6)');
 
-# Tests: 9
+# Tests: 10
 
 ## Hash-like ways to fetch numerically-indexed elements
 
 is($xh->{0}, 'first', 'num key hashref access');
 is($xh->FETCH(1), 'second', 'num key hashref FETCH');
+is($xh->fetch(1), 'second', 'num key hashref fetch');
 is(tied(%$xh)->FETCH(1), 'second', 'num key hashref FETCH');
 
-# Tests: 3
+# Tests: 4
 
 ## Test delete and exists for numeric keys
 
@@ -95,8 +112,10 @@ is_deeply(xh(2, 1)->delete({to=>xh()}, 1, 0)->as_hashref(), [{1=>1},{0=>2}],
 ok(scalar %$xh, 'scalar is true when hash is not empty');
 $xh->CLEAR();
 is_deeply($xh->as_hashref(), [], 'XHash is now empty after CLEAR');
+$xh->push(1)->clear();
+is_deeply($xh->as_hashref(), [], 'XHash is now empty after clear');
 
-# Tests: 2
+# Tests: 3
 
 ## Hash-like ways to store string-keyed elements
 
@@ -116,8 +135,9 @@ is_deeply($xh->as_hashref(), [{one=>'first'},{two=>'second'}],
 
 is($xh->{one}, 'first', 'string key hashref access');
 is($xh->FETCH('two'), 'second', 'string key hashref FETCH');
+is($xh->fetch('two'), 'second', 'string key hashref fetch');
 
-# Tests: 2
+# Tests: 3
 
 ## Test delete and exists for string keys
 

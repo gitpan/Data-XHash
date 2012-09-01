@@ -1,5 +1,9 @@
 Revision history for Data-XHash
 
+0.03	2012-08-31
+	Added missing store() alias for STORE() and can_ok tests for all
+	methods. Added merge() method, tests, and docs.
+
 0.02	2012-08-27
 	Made some small changes to the documentation and added the
 	foreach method and associated tests.
