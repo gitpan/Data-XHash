@@ -18,11 +18,11 @@ or map) with key-path traversal and automatic index keys
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 =head1 SYNOPSIS
 
@@ -146,7 +146,8 @@ our $VERSION = '0.03';
 
     ## TIEHASH methods - see perltie
 
-    # TIEHASH, FETCH, STORE, CLEAR, FIRSTKEY, NEXTKEY
+    # TIEHASH, FETCH, STORE, CLEAR, DELETE, EXISTS
+    # FIRSTKEY, NEXTKEY, UNTIE, DESTROY
 
 =head1 DESCRIPTION
 
