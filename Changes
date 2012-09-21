@@ -1,5 +1,8 @@
 Revision history for Data-XHash
 
+0.06	2012-09-21
+	Fixed a silly typo. Ugh!
+
 0.05	2012-09-21
 	Updated data structure and code for performance enhancement.
 	Added previous_key method. FIRSTKEY and NEXTKEY are now implemented

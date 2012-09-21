@@ -22,11 +22,11 @@ or map) with key-path traversal and automatic index keys
 
 =head1 VERSION
 
-Version 0.05
+Version 0.06
 
 =cut
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 =head1 SYNOPSIS
 
@@ -1378,7 +1378,7 @@ An ordered hash implementation with a different interface and data
 structure and without auto-indexed keys and some of Data::XHash's
 other features.
 
-Tie::IxHash is probably the "standard" ordered hash module. It's
+Tie::IxHash is probably the "standard" ordered hash module. Its
 simpler interface and underlying array-based implementation allow it to
 be almost 2.5 times faster than Data::XHash for some operations.
 However, it's Delete, Shift, Splice, and Unshift methods degrade in
