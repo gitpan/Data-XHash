@@ -1,7 +1,8 @@
 Revision history for Data-XHash
 
+0.07	2012-09-21
 0.06	2012-09-21
-	Fixed a silly typo. Ugh!
+	Fixed silly typos. Double ugh!
 
 0.05	2012-09-21
 	Updated data structure and code for performance enhancement.

@@ -22,11 +22,11 @@ or map) with key-path traversal and automatic index keys
 
 =head1 VERSION
 
-Version 0.06
+Version 0.07
 
 =cut
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 =head1 SYNOPSIS
 
@@ -1218,7 +1218,7 @@ sub renumber {
     return $self;
 }
 
-=head2 $xhash->traverse($path, options?)
+=head2 $xhash->traverse($path, %options?)
 
 This method traverses key paths across nested XHash trees. The path may be
 a simple scalar key, or it may be an array reference containing multiple
