@@ -11,6 +11,10 @@ use Scalar::Util qw/blessed/;
 
 our @EXPORT_OK = (qw/&xhash &xhashref &xh &xhn &xhr &xhrn/);
 
+# XHash values are stored internally using a ring doubly-linked with
+# unweakened references:
+# {hash}{$key} => [$previous_link, $next_link, $value, $key]
+
 =head1 NAME
 
 Data::XHash - Extended, ordered hash (commonly known as an associative array
@@ -18,11 +22,11 @@ or map) with key-path traversal and automatic index keys
 
 =head1 VERSION
 
-Version 0.04
+Version 0.05
 
 =cut
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 =head1 SYNOPSIS
 
@@ -82,26 +86,30 @@ our $VERSION = '0.04';
     # Delete a key and get its value
     $value = delete $tiedhref->{$key}; # or \@path
     $value = $xhash->delete($key); # or \@path
+    $value = $xhash->delete(\%options?, @local_keys);
 
     # Does a key exist?
     $boolean = exists $tiedhref->{$key}; # or \@path
     $boolean = $xhash->exists($key); # or \@path
 
     # Keys and lists of keys
-    @keys = keys %$tiedhref; # All keys; resets iterator
-    @keys = $xhash->keys(%options);
+    @keys = keys %$tiedhref; # All keys using iterator
+    @keys = $xhash->keys(%options); # Faster, without iterator
+    $key = $xhash->FIRSTKEY(); # Uses iterator
     $key = $xhash->first_key();
+    $key1 = $xhash->previous_key($key2);
+    $key = $xhash->NEXTKEY(); # Uses iterator
     $key2 = $xhash->next_key($key1);
     $key = $xhash->last_key();
     $key = $xhash->next_index(); # The next auto-index key
 
     # Values
-    @all_values = values %$tiedhref;
+    @all_values = values %$tiedhref; # Uses iterator
+    @all_values = $xhash->values(); # Faster, without iterator
     @some_values = @{%$tiedhref}{@keys}; # or pathrefs
-    @all_values = $xhash->values();
     @some_values = $xhash->values(\@keys); # or pathrefs
 
-    ($key, $value) = each(%$tiedhref); # Key/value iteration
+    ($key, $value) = each(%$tiedhref); # Keys/values using iterator
 
     # Call coderef with ($xhash, $key, $value, @more_args) for
     # each key/value pair and then undef/undef.
@@ -272,7 +280,8 @@ sub FETCH {
 
     # Local fetch
     $self = tied(%$self) || $self;
-    return exists($self->{hash}{$key})? $self->{hash}{$key}[2]: undef;
+    my $entry = $self->{hash}{$key};
+    return $entry? $entry->[2]: undef;
 }
 
 *fetch = \&FETCH;
@@ -315,19 +324,17 @@ sub STORE {
     my ($this, $key, $value, %options) = @_;
     my $array_key = ref($key) eq 'ARRAY';
 
-    # XHash values are stored as a doubly-linked, circular hash:
-    # {hash}{$key}->[$previous_key, $next_key, $value]
-
     if ($array_key && @$key) {
 	# Store with path traversal.
 	my $path = $this->traverse($key, op => 'store');
-	$path->{container}->STORE($path->{key}, $value, %options);
+	$path->{container}->store($path->{key}, $value, %options);
     } else {
 	# Store locally.
 	my $self = tied(%$this) || $this;
 
 	# Get the next index for undef or [].
-	$key = $self->next_index() if !defined($key) || $array_key;
+	$key = defined($self->{max_index})? ($self->{max_index} + 1):
+	  $self->next_index() if !defined($key) || $array_key;
 
 	if ($options{nested}) {
 	    # Convert nested native structures to XHashes.
@@ -338,22 +345,25 @@ sub STORE {
 	    }
 	}
 
-	if (exists($self->{hash}{$key})) {
+	if (my $entry = $self->{hash}{$key}) {
 	    # Replace the value for an existing key.
-	    $self->{hash}{$key}[2] = $value;
+	    $entry->[2] = $value;
 	} else {
-	    if (defined($self->{last_key})) {
-		# Link an additional key into a non-empty ring
-		my ($first, $last) = ($self->first_key(), $self->{last_key});
-		$self->{hash}{$key} = [$last, $first, $value];
-		$self->{hash}{$last}[1] = $self->{hash}{$first}[0] = $key;
+	    my $link;
+	    if (my $tail = $self->{tail}) {
+		my $head = $tail->[1];
+		# Link an additional element into a non-empty ring.
+		$link = $self->{hash}{$key} =
+		  $tail->[1] = $head->[0] = [$tail, $head, $value, $key];
 	    } else {
 		# Start a new key ring.
-		$self->{hash}{$key} = [$key, $key, $value];
+		$link = $self->{hash}{$key} = [undef, undef, $value, $key];
+		$link->[0] = $link->[1] = $link;
 	    }
-	    $self->{last_key} = $key;
+	    $self->{tail} = $link;
 	    $self->{max_index} = $key
-	      if ($key =~ /^\d+$/ && $key >= $self->next_index());
+	      if ($key =~ /^\d+$/ && (defined($self->{max_index})?
+	      ($key > $self->{max_index}): ($key >= $self->next_index())));
 	}
     }
 
@@ -376,9 +386,13 @@ sub CLEAR {
     my ($this) = @_;
     my $self = tied(%$this) || $this;
 
-    $self->{hash} ||= {};
-    %{$self->{hash}} = ();
-    $self->{last_key} = undef;
+    if ($self->{hash}) {
+	# Blow away unweakened refs before tossing the hash.
+	@$_ = () foreach (values %{$self->{hash}});
+    }
+    $self->{hash} = {};
+    delete $self->{tail};
+    delete $self->{iter};
     $self->{max_index} = -1;
     return $this;
 }
@@ -404,7 +418,7 @@ Options:
 =item to => $destination
 
 If C<$destination> is an arrayref, hashref, or XHash, each deleted
-C<{ $key => $value }> is added to it and the destination is returned
+C<< { $key => $value } >> is added to it and the destination is returned
 instead of the most recently deleted value.
 
 =back
@@ -421,43 +435,39 @@ sub DELETE : method {
 	my $path = $self->traverse($key, op => 'delete');
 
 	return $path->{container}?
-	  $path->{container}->DELETE($path->{key}): undef;
+	  $path->{container}->delete($path->{key}): undef;
     }
 
     # Delete locally.
-    my ($to, $return) = ($options{to});
-
+    my $to = $options{to};
+    my $return;
     $self = tied(%$self) || $self;
 
     while (@_) {
 	$key = shift;
 
-        if (exists($self->{hash}{$key})) {
-	    my @entry = @{$self->{hash}{$key}};
-
-	    if ($entry[0] ne $key) {
-		# There are other keys, so unlink this one from the ring.
-		$self->{hash}{$entry[0]}[1] = $entry[1]; # prev.next = my.next
-		$self->{hash}{$entry[1]}[0] = $entry[0]; # next.prev = my.prev
-		$self->{max_index} = undef
-		  if defined($self->{max_index}) && $self->{max_index} eq $key;
-		$self->{next_key} = $entry[0]
-		  if (defined($self->{next_key}) && $self->{next_key} eq $key);
-		$self->{last_key} = $entry[0] if $self->{last_key} eq $key;
-		delete $self->{hash}{$key};
+        if (my $link = $self->{hash}{$key}) {
+	    if (ref($to) eq 'ARRAY') {
+		push(@$to, { $key => $link->[2] });
+	    } elsif (ref($to) eq 'HASH') {
+		$to->{$key} = $link->[2];
+	    } elsif (blessed($to) && $to->isa(__PACKAGE__)) {
+		$to->store($key, $link->[2]);
 	    } else {
-		# We're deleting the last key, so just reset.
-		$self->CLEAR();
+		$return = $link->[2];
 	    }
 
-	    if (ref($to) eq 'ARRAY') {
-		push(@$to, { $key => $entry[2] });
-	    } elsif (ref($to) eq 'HASH') {
-		$to->{$key} = $entry[2];
-	    } elsif (blessed($to) && $to->isa(__PACKAGE__)) {
-		$to->STORE($key, $entry[2]);
+	    if ($link->[0] != $link) {
+		# There are other keys, so unlink this one from the ring.
+		$link->[0][1] = $link->[1]; # prev.next = my.next
+		$link->[1][0] = $link->[0]; # next.prev = my.prev
+		$self->{max_index} = undef
+		  if defined($self->{max_index}) && $self->{max_index} eq $key;
+		$self->{tail} = $link->[0] if $self->{tail} == $link;
+		delete $self->{hash}{$key};
 	    } else {
-		$return = $entry[2];
+		# We're deleting the last key, so do a full reset.
+		$self->clear();
 	    }
 	}
     }
@@ -482,7 +492,7 @@ sub EXISTS {
 	# Check existence across the path.
 	my $path = $self->traverse($key, op => 'exists');
 
-	return $path->{container} && $path->{container}->EXISTS($path->{key});
+	return $path->{container} && $path->{container}->exists($path->{key});
     }
 
     # Check existence locally.
@@ -492,24 +502,74 @@ sub EXISTS {
 
 *exists = \&EXISTS;
 
+=head2 $xhash->FIRSTKEY( )
+
+This returns the first key (or C<undef> if the XHash is empty) and resets
+the internal iterator.
+
+=cut
+
+sub FIRSTKEY {
+    my ($self) = @_;
+    $self = tied(%$self) || $self;
+
+    if ($self->{tail}) {
+	# The first key is in the head (the tail's next link).
+	my $head = $self->{iter} = $self->{tail}[1];
+	return $head->[3];
+    }
+
+    delete $self->{iter};
+    return undef;
+}
+
 =head2 $xhash->first_key( )
 
 This returns the first key (or C<undef> if the XHash is empty).
 
 =cut
 
-sub FIRSTKEY {
+sub first_key {
     my ($self) = @_;
-
     $self = tied(%$self) || $self;
 
-    # This is a doubly-linked ring buffer, so the first key is
-    # the one after the last key.
-    return defined($self->{last_key})?
-      $self->{hash}{$self->{last_key}}[1]: undef;
+    return ($self->{tail}? $self->{tail}[1][3]: undef);
 }
 
-*first_key = \&FIRSTKEY;
+=head2 $xhash->previous_key($key)
+
+This returns the key before C<$key>, or C<undef> if C<$key> is the first
+key or doesn't exist.
+
+=cut
+
+sub previous_key {
+    my ($self, $key) = @_;
+    $self = tied(%$self) || $self;
+
+    my $entry = $self->{hash}{$key};
+    return (($entry && $entry != $self->{tail}[1])? $entry->[0][3]: undef);
+}
+
+=head2 $xhash->NEXTKEY( )
+
+This returns the next key using the internal iterator, or C<undef> if there
+are no more keys.
+
+=cut
+
+sub NEXTKEY {
+    my ($self) = @_;
+    $self = tied(%$self) || $self;
+
+    my $iter = $self->{iter};
+    if ($iter && $iter != $self->{tail}) {
+	$iter = $self->{iter} = $iter->[1];
+	return $iter->[3];
+    }
+
+    return undef;
+}
 
 =head2 $xhash->next_key($key)
 
@@ -520,15 +580,13 @@ Path keys are not supported.
 
 =cut
 
-sub NEXTKEY {
-    my ($this, $prev) = @_;
-    my $self = tied(%$this) || $this;
+sub next_key {
+    my ($self, $key) = @_;
+    $self = tied(%$self) || $self;
 
-    return ((!defined($self->{last_key}) || $prev eq $self->{last_key})?
-      undef: $self->{hash}{$prev}[1]);
+    my $entry = $self->{hash}{$key};
+    return (($entry && $entry != $self->{tail})? $entry->[1][3]: undef);
 }
-
-*next_key = \&NEXTKEY;
 
 =head2 $xhash->last_key( )
 
@@ -538,9 +596,9 @@ This returns the last key, or C<undef> if the XHash is empty.
 
 sub last_key {
     my $self = shift;
-
     $self = tied(%$self) || $self;
-    return $self->{last_key};
+
+    return ($self->{tail}? $self->{tail}[3]: undef);
 }
 
 =head2 $xhash->next_index( )
@@ -552,8 +610,8 @@ than the current largest non-negative integer index.
 
 sub next_index {
     my ($self) = @_;
-
     $self = tied(%$self) || $self;
+
     if (!defined($self->{max_index})) {
 	# Recalculate max_index if that key was previously deleted.
 	$self->{max_index} = -1;
@@ -584,7 +642,7 @@ sub SCALAR : method {
 =head2 $xhash->keys(%options)
 
 This method is equivalent to C<keys(%$tiedref)> but may be called on the
-object.
+object (and is much faster).
 
 Options:
 
@@ -606,13 +664,15 @@ returned in ascending order (true) or XHash insertion order (false).
 
 sub keys : method {
     my ($self, %options) = @_;
-    my (@keys, $key);
-
     $self = tied(%$self) || $self;
-    $key = $self->FIRSTKEY();
-    while (defined($key)) {
-	push(@keys, $key);
-	$key = $self->NEXTKEY($key);
+    my @keys;
+
+    if (my $tail = $self->{tail}) {
+	my $link = $tail;
+	do {
+	    $link = $link->[1];
+	    push(@keys, $link->[3]);
+	} while ($link != $tail);
     }
 
     if ($options{index_only}) {
@@ -623,13 +683,15 @@ sub keys : method {
     return @keys;
 }
 
-=head2 $xhash->values([keys]?)
+=head2 $xhash->values(\@keys?)
 
 This method is equivalent to C<values(%$tiedref)> but may be called on the
-object.
+object (and, if called without specific keys, is much faster too).
 
 You may optionally pass a reference to an array of keys whose values should
-be returned (equivalent to the slice C<@{$tiedref}{@$keys}>).
+be returned (equivalent to the slice C<@{$tiedref}{@keys}>). Key paths are
+allowed, but don't forget that the list of keys/paths must be provided as
+an array ref (C<< [ $local_key, \@path ] >>).
 
 =cut
 
@@ -638,8 +700,22 @@ sub values : method {
     my $keys = shift;
 
     $self = tied(%$self) || $self;
-    return map($self->fetch($_), (ref($keys) eq 'ARRAY'?
-      @$keys: $self->keys()));
+    if (ref($keys) eq 'ARRAY') {
+	return map(ref($_)? $self->fetch($_): ($self->{hash}{$_} || [])->[2],
+	  @$keys);
+    }
+
+    my @values;
+
+    if (my $tail = $self->{tail}) {
+	my $link = $tail;
+	do {
+	    $link = $link->[1];
+	    push(@values, $link->[2]);
+	} while ($link != $tail);
+    }
+
+    return @values;
 }
 
 =head2 $xhash->foreach(\&coderef, @more_args)
@@ -670,19 +746,25 @@ Example:
 sub foreach : method {
     my $self = shift;
     my $code = shift;
-    my $key = $self->FIRSTKEY();
     my @results;
 
-    while (defined($key)) {
-	push(@results, &$code($self, $key, $self->fetch($key), @_));
-	$key = $self->NEXTKEY($key);
+    $self = tied(%$self) || $self;
+    if (my $tail = $self->{tail}) {
+	my $link = $tail;
+
+	do {
+	    $link = $link->[1];
+	    push(@results, &$code($self, $link->[3], $link->[2], @_));
+	} while ($link != $tail);
     }
+
     push(@results, &$code($self, undef, undef, @_));
     return @results;
 }
 
 sub UNTIE {}
-sub DESTROY {}
+
+sub DESTROY { shift->clear(); }
 
 =head2 $xhash->pop( )
 
@@ -699,20 +781,20 @@ sub pop : method {
     my ($self) = @_;
 
     $self = tied(%$self) || $self;
-    return wantarray? (): undef unless defined($self->{last_key});
+    return wantarray? (): undef unless $self->{tail};
 
-    my $key = $self->{last_key};
-    return wantarray? ($key, $self->DELETE($key)): $self->DELETE($key);
+    my $key = $self->{tail}[3];
+    return wantarray? ($key, $self->delete($key)): $self->delete($key);
 }
 
 sub shift : method {
     my ($self) = @_;
 
     $self = tied(%$self) || $self;
-    return wantarray? (): undef unless defined($self->{last_key});
+    return wantarray? (): undef unless $self->{tail};
 
-    my $key = $self->first_key();
-    return wantarray? ($key, $self->DELETE($key)): $self->DELETE($key);
+    my $key = $self->{tail}[1][3];
+    return wantarray? ($key, $self->delete($key)): $self->delete($key);
 }
 
 =head2 $xhash->push(@elements)
@@ -763,32 +845,32 @@ sub pushref {
     my ($this, $list, %options) = @_;
     my $self = tied(%$this) || $this;
     my $at_key = delete $options{at_key};
-    my $save_last;
+    my $save_tail;
 
     croak "pushref requires an arrayref" unless ref($list) eq 'ARRAY';
 
     if (defined($at_key)) {
-	croak "pushref at_key => key does not exist"
-	  unless exists($self->{hash}{$at_key});
-	if ($at_key ne $self->{last_key}) {
+	my $entry = $self->{hash}{$at_key};
+	croak "pushref at_key => key does not exist" unless $entry;
+	if ($entry != $self->{tail}) {
 	    # Temporarily shift the end of the ring
-	    $save_last = $self->{last_key};
-	    $self->{last_key} = $at_key;
+	    $save_tail = $self->{tail};
+	    $self->{tail} = $entry;
 	}
     }
 
     foreach my $item (@$list) {
 	if (ref($item) eq 'HASH') {
-	    $self->STORE($_, $item->{$_}, %options) foreach (keys %$item);
+	    $self->store($_, $item->{$_}, %options) foreach (keys %$item);
 	} elsif (ref($item) eq 'REF') {
-	    $self->STORE(undef, $$item, %options, nested => 0);
+	    $self->store(undef, $$item, %options, nested => 0);
 	} else {
-	    $self->STORE(undef, $item, %options);
+	    $self->store(undef, $item, %options);
 	}
     }
 
-    # Restore the ring after at_key push
-    $self->{last_key} = $save_last if defined($save_last);
+    # Restore the ring after an at_key push.
+    $self->{tail} = $save_tail if $save_tail;
 
     return $this;
 }
@@ -799,19 +881,21 @@ sub unshiftref {
     my ($this, $list, %options) = @_;
     my $self = tied(%$this) || $this;
     my $at_key = delete($options{at_key});
-    my $save_last = $self->{last_key};
 
     croak "unshiftref requires an arrayref" unless ref($list) eq 'ARRAY';
 
+    my $save_tail = $self->{tail};
+
     if (defined($at_key)) {
+	my $entry = $self->{hash}{$at_key};
 	croak "unshiftref at_key => key does not exist"
-	  unless exists($self->{hash}{$at_key});
+	  unless $self->{hash}{$at_key};
 	# Temporarily shift the ring
-	$self->{last_key} = $self->{hash}{$at_key}[0];
+	$self->{tail} = $entry->[0];
     }
 
     $self->pushref($list, %options);
-    $self->{last_key} = $save_last if defined($save_last);
+    $self->{tail} = $save_tail if $save_tail;
 
     return $this;
 }
@@ -941,12 +1025,18 @@ sub as_array { return @{shift->as_arrayref(@_)}; }
 
 sub as_arrayref {
     my ($self, %options) = @_;
-    my @list;
-
     $self = tied(%$self) || $self;
-    foreach ($self->keys()) {
-	my $value = $self->{hash}{$_}[2];
-	if (/^-?\d+$/) {
+    my $tail = $self->{tail};
+
+    return [] unless $tail;
+
+    my (@list, $key, $value);
+    my $link = $tail;
+    do {
+	$link = $link->[1];
+	($key, $value) = @{$link}[3, 2];
+
+	if ($key =~ /^-?\d+$/) {
 	    if ($options{nested} && blessed($value) &&
 	      $value->isa(__PACKAGE__)) {
 		push(@list, $value->as_arrayref(%options));
@@ -956,12 +1046,12 @@ sub as_arrayref {
 	} else {
 	    if ($options{nested} && blessed($value) &&
 	      $value->isa(__PACKAGE__)) {
-		push(@list, { $_ => $value->as_arrayref(%options) });
+		push(@list, { $key => $value->as_arrayref(%options) });
 	    } else {
-		push(@list, { $_ => $value });
+		push(@list, { $key => $value });
 	    }
 	}
-    }
+    } while ($link != $self->{tail});
 
     return \@list;
 }
@@ -970,17 +1060,23 @@ sub as_hash { return @{shift->as_hashref(@_)}; }
 
 sub as_hashref {
     my ($self, %options) = @_;
-    my @list;
-
     $self = tied(%$self) || $self;
-    foreach ($self->keys()) {
-	my $value = $self->{hash}{$_}[2];
+    my $tail = $self->{tail};
+
+    return [] unless $tail;
+
+    my (@list, $key, $value);
+    my $link = $tail;
+    do {
+	$link = $link->[1];
+	($key, $value) = @{$link}[3, 2];
+
 	if ($options{nested} && blessed($value) && $value->isa(__PACKAGE__)) {
-	    push(@list, { $_ => $value->as_hashref(%options) });
+	    push(@list, { $key => $value->as_hashref(%options) });
 	} else {
-	    push(@list, { $_ => $value });
+	    push(@list, { $key => $value });
 	}
-    }
+    } while ($link != $tail);
 
     return \@list;
 }
@@ -1023,14 +1119,14 @@ sub reorder {
     $refkey = shift(@keys);
 
     croak("reorder reference key does not exist")
-      unless exists($self->{hash}{$refkey});
+      unless $self->{hash}{$refkey};
 
     while (@keys) {
 	my $key = shift(@keys);
 
 	if ($key ne $refkey) {
-	    push(@after, { $key => $self->DELETE($key) })
-	      if exists($self->{hash}{$key});
+	    push(@after, { $key => $self->delete($key) })
+	      if $self->{hash}{$key};
 	} elsif (!$before) {
 	    $before = [ @after ];
 	    @after = ();
@@ -1061,22 +1157,18 @@ sub remap {
     my $this = shift;
     my $self = tied(%$this) || $this;
     my %map = ref($_[0]) eq 'HASH'? %{$_[0]}: @_;
-    my $last = $self->{last_key};
     my %hash;
 
     croak "remap mapping must be unique"
-      unless keys(%{{ map(($_ => 1), values(%map)) }}) ==
-      values(%map);
+      unless keys(%{{ reverse %map }}) == keys(%map);
 
-    while (my ($key, $entry) = each(%{$self->{hash}})) {
-	$entry->[0] = $map{$entry->[0]} if exists($map{$entry->[0]});
-	$entry->[1] = $map{$entry->[1]} if exists($map{$entry->[1]});
-	$hash{exists($map{$key})? $map{$key}: $key} = $entry;
+    my ($key, $new_key, $entry);
+    while (($key, $entry) = each(%{$self->{hash}})) {
+	$key = $entry->[3] = $new_key if defined($new_key = $map{$key});
+	$hash{$key} = $entry;
     }
 
     $self->{hash} = \%hash;
-    $self->{last_key} = $map{$last}
-      if defined($last) && exists($map{$last});
 
     return $this;
 }
@@ -1183,7 +1275,7 @@ sub traverse {
 
     while (@path) {
 	$key = shift(@path);
-	if (!defined($key) || !$container->EXISTS($key)) {
+	if (!defined($key) || !$container->exists($key)) {
 	    # This part of the path is missing. Stop or vivify.
 	    return { container => undef, key => undef, value => undef }
 	      unless $options{vivify};
@@ -1193,13 +1285,13 @@ sub traverse {
 
 	    if (@path || $options{xhash}) {
 		# Vivify an XHash for intermediates or fetch {}.
-		$container->STORE($key, $value = $self->new());
+		$container->store($key, $value = $self->new());
 	    } else {
 		$value = undef;
 	    }
 	} else {
-	    $value = $container->FETCH($key);
-	    $container->STORE($key, $value = $self->new())
+	    $value = $container->fetch($key);
+	    $container->store($key, $value = $self->new())
 	      if (@path || $options{xhash}) &&
 	      (!blessed($value) || !$value->isa(__PACKAGE__));
 	}
@@ -1285,6 +1377,14 @@ Data::XHash.
 An ordered hash implementation with a different interface and data
 structure and without auto-indexed keys and some of Data::XHash's
 other features.
+
+Tie::IxHash is probably the "standard" ordered hash module. It's
+simpler interface and underlying array-based implementation allow it to
+be almost 2.5 times faster than Data::XHash for some operations.
+However, it's Delete, Shift, Splice, and Unshift methods degrade in
+performance with the size of the hash. Data::XHash uses a doubly-linked
+list, so its delete, shift, splice, and unshift methods are unaffected
+by hash size.
 
 =item L<Tie::Hash::Array>
 

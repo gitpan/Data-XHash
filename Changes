@@ -1,5 +1,11 @@
 Revision history for Data-XHash
 
+0.05	2012-09-21
+	Updated data structure and code for performance enhancement.
+	Added previous_key method. FIRSTKEY and NEXTKEY are now implemented
+	separately from first_key and next_key and use an internal iterator
+	for faster keys(%$tiedhref).
+
 0.04	2012-09-01
 	Added missing TIEHASH methods (DELETE, EXISTS, etc.) to POD.
 	No code changes.

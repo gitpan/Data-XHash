@@ -2,7 +2,7 @@
 
 ### This file tests primarily hash-related functionality
 
-use Test::More tests => 58;
+use Test::More tests => 62;
 use Data::XHash qw/xhash xh/;
 
 sub myxh {
@@ -18,8 +18,8 @@ can_ok('Data::XHash', qw/
   fetch FETCH store STORE clear CLEAR delete DELETE exists EXISTS
   /);
 can_ok('Data::XHash', qw/
-  first_key FIRSTKEY next_key NEXTKEY last_key next_index keys values
-  foreach scalar SCALAR
+  first_key FIRSTKEY previous_key next_key NEXTKEY last_key next_index
+  keys values foreach scalar SCALAR
   /);
 
 # Tests: 2
@@ -163,6 +163,15 @@ is($xh->NEXTKEY(2), 3, 'NEXTKEY #2 returns third & last key');
 is($xh->NEXTKEY(3), undef, 'NEXTKEY after end returns undef');
 
 # Tests: 6
+
+## Test last_key, previous_key
+
+is($xh->last_key(), 3, 'last_key returns last key');
+is($xh->previous_key(3), 2, 'prev_key #1 returns second key');
+is($xh->previous_key(2), 'one', 'prev_key #2 returns first key');
+is($xh->previous_key('one'), undef, 'prev_key before start returns undef');
+
+# Tests: 4
 
 ## Test foreach
 
