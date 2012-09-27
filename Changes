@@ -1,8 +1,12 @@
 Revision history for Data-XHash
 
+0.09	2012-09-27
+	Reimplement SCALAR to pass Perl 5.6.2 testing.
+
+0.08	2012-09-21
 0.07	2012-09-21
 0.06	2012-09-21
-	Fixed silly typos. Double ugh!
+	Finding and fixing silly typos. Triple ugh!
 
 0.05	2012-09-21
 	Updated data structure and code for performance enhancement.

@@ -22,11 +22,11 @@ or map) with key-path traversal and automatic index keys
 
 =head1 VERSION
 
-Version 0.07
+Version 0.09
 
 =cut
 
-our $VERSION = '0.07';
+our $VERSION = '0.09';
 
 =head1 SYNOPSIS
 
@@ -633,8 +633,8 @@ This returns true if the XHash is not empty.
 
 sub SCALAR : method {
     my ($self) = @_;
-    
-    return scalar %{$self->{hash}};
+
+    return defined($self->{tail});
 }
 
 *scalar = \&SCALAR;
@@ -1381,7 +1381,7 @@ other features.
 Tie::IxHash is probably the "standard" ordered hash module. Its
 simpler interface and underlying array-based implementation allow it to
 be almost 2.5 times faster than Data::XHash for some operations.
-However, it's Delete, Shift, Splice, and Unshift methods degrade in
+However, its Delete, Shift, Splice, and Unshift methods degrade in
 performance with the size of the hash. Data::XHash uses a doubly-linked
 list, so its delete, shift, splice, and unshift methods are unaffected
 by hash size.
